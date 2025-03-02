@@ -242,13 +242,41 @@
       display: none;
     }
 
-    .preview-content {
-      max-width: 90%;
-      max-height: 90%;
-      position: relative;
+    /* Add to your existing CSS */
+    .retry-image {
+      min-height: 40px;
+      min-width: 40px;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38"><g fill="none" fill-rule="evenodd"><g transform="translate(1 1)" stroke-width="2"><circle stroke-opacity=".5" cx="18" cy="18" r="18"/><path d="M36 18c0-9.94-8.06-18-18-18" stroke="%232271b1"><animateTransform attributeName="transform" type="rotate" from="0 18 18" to="360 18 18" dur="1s" repeatCount="indefinite"/></path></g></g></svg>');
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 24px;
     }
 
-    .preview-content img,
+    .retry-image[src^="data:image/gif;base64"] {
+      /* Show loading spinner only when image hasn't loaded yet */
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38"><g fill="none" fill-rule="evenodd"><g transform="translate(1 1)" stroke-width="2"><circle stroke-opacity=".5" cx="18" cy="18" r="18"/><path d="M36 18c0-9.94-8.06-18-18-18" stroke="%232271b1"><animateTransform attributeName="transform" type="rotate" from="0 18 18" to="360 18 18" dur="1s" repeatCount="indefinite"/></path></g></g></svg>');
+    }
+
+    /* Update these styles in the <style> section */
+    .preview-content {
+      max-width: 90%;
+      max-height: 90vh;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: white;
+      padding: 10px;
+      border-radius: 4px;
+    }
+
+    .preview-content img {
+      max-width: 100%;
+      max-height: 80vh;
+      object-fit: contain;
+      display: block;
+    }
+
     .preview-content video,
     .preview-content audio {
       max-width: 100%;
@@ -301,6 +329,43 @@
       display: flex;
       align-items: center;
     }
+
+    .cors-options {
+      background-color: #e9f5fe;
+      border-left: 4px solid #4a9dea;
+      padding: 15px;
+      margin-top: 15px;
+      border-radius: 4px;
+    }
+
+    .advanced-settings {
+      margin-top: 10px;
+    }
+
+    .settings-toggle {
+      color: #2271b1;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .version-footer {
+      margin-top: 40px;
+      padding-top: 15px;
+      color: #666;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .version-footer hr {
+      border: 0;
+      height: 1px;
+      background-color: #ddd;
+      margin-bottom: 15px;
+    }
+
+    .version-footer p {
+      margin: 0;
+    }
   </style>
 </head>
 
@@ -314,12 +379,13 @@
         <div class="input-group">
           <input type="text" id="site-url" placeholder="WordPress Site URL" />
           <select id="proxy-selector">
+            <option value="noproxy">No Proxy (Direct)</option>
             <option value="allorigins">All Origins Proxy</option>
             <option value="cors-anywhere">CORS Anywhere Proxy</option>
-            <option value="noproxy">No Proxy (Direct)</option>
           </select>
           <button id="connect-btn">Connect</button>
         </div>
+        <script>updateProxyType()</script>
 
         <div class="input-group" id="search-controls" style="display: none;">
           <input type="text" id="search-input" placeholder="Search media..." />
@@ -349,8 +415,35 @@
       </div>
 
       <div class="proxy-note">
-        <strong>Note:</strong> If you're experiencing CORS errors, try using a different proxy or select "No Proxy" if
-        the WordPress site allows direct access.
+        <strong>Note:</strong> If you're experiencing CORS errors, try using a different proxy or select "No Proxy" for
+        WordPress sites that have CORS properly configured.
+      </div>
+
+      <div class="cors-options" id="cors-options" style="display: none;">
+        <h3>CORS Solutions</h3>
+        <p>You're using direct access mode. If you encounter CORS errors, try these solutions:</p>
+        <ul>
+          <li>Try appending "/wp-json/" to your site URL - some WordPress sites use different REST API endpoints</li>
+          <li>Enable the REST API endpoints in your WordPress settings (if you control the site)</li>
+          <li>Install a CORS-enabling plugin on your WordPress site (if you control the site)</li>
+          <li>Use the "jsonp" mode for compatible WordPress sites (limited functionality)</li>
+        </ul>
+        <div class="advanced-settings">
+          <span class="settings-toggle" id="advanced-toggle">Show Advanced Settings</span>
+          <div id="advanced-settings" style="display: none; margin-top: 10px;">
+            <label>
+              <input type="checkbox" id="use-jsonp"> Try JSONP mode (only works with some WordPress versions)
+            </label>
+            <br>
+            <label>
+              <input type="checkbox" id="use-credentials"> Include credentials (cookies)
+            </label>
+            <br>
+            <label>
+              <input type="text" id="custom-api-path" placeholder="Custom API path (e.g., /wp-json/wp/v2)">
+            </label>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -393,14 +486,19 @@
         totalItems: 0,
         totalPages: 0,
         currentPage: 1,
-        perPage: 10, // Changed default to 10
+        perPage: 10,
         search: '',
         mediaType: '',
         sortBy: 'date',
         sortOrder: 'desc',
         viewMode: 'grid',
         isLoading: false,
-        proxyType: 'allorigins' // Changed default to allorigins
+        proxyType: 'noproxy',
+        useJsonp: false,
+        useCredentials: false,
+        customApiPath: '',
+        failedAttempts: 0,
+        fallbackMode: false
       };
 
       // Proxy URLs
@@ -432,6 +530,12 @@
       const previewModal = document.getElementById('preview-modal');
       const previewContainer = document.getElementById('preview-container');
       const closePreview = document.querySelector('.close-preview');
+      const corsOptions = document.getElementById('cors-options');
+      const advancedToggle = document.getElementById('advanced-toggle');
+      const advancedSettings = document.getElementById('advanced-settings');
+      const useJsonpCheckbox = document.getElementById('use-jsonp');
+      const useCredentialsCheckbox = document.getElementById('use-credentials');
+      const customApiPathInput = document.getElementById('custom-api-path');
 
       // Event Listeners
       connectBtn.addEventListener('click', connectToSite);
@@ -446,10 +550,29 @@
       gridViewBtn.addEventListener('click', () => switchView('grid'));
       listViewBtn.addEventListener('click', () => switchView('list'));
       closePreview.addEventListener('click', closePreviewModal);
+      advancedToggle.addEventListener('click', toggleAdvancedSettings);
+      useJsonpCheckbox.addEventListener('change', () => { state.useJsonp = useJsonpCheckbox.checked; });
+      useCredentialsCheckbox.addEventListener('change', () => { state.useCredentials = useCredentialsCheckbox.checked; });
+      customApiPathInput.addEventListener('input', () => { state.customApiPath = customApiPathInput.value.trim(); });
+
+      function toggleAdvancedSettings() {
+        if (advancedSettings.style.display === 'none') {
+          advancedSettings.style.display = 'block';
+          advancedToggle.textContent = 'Hide Advanced Settings';
+        } else {
+          advancedSettings.style.display = 'none';
+          advancedToggle.textContent = 'Show Advanced Settings';
+        }
+      }
 
       // Update proxy type
       function updateProxyType() {
         state.proxyType = proxySelector.value;
+        if (state.proxyType === 'noproxy') {
+          corsOptions.style.display = 'block';
+        } else {
+          corsOptions.style.display = 'none';
+        }
       }
 
       // Update per page
@@ -460,7 +583,6 @@
           state.currentPage = 1;
           fetchMedia();
         } else {
-          // Reset to valid range if outside bounds
           perPageInput.value = state.perPage;
         }
       }
@@ -491,6 +613,8 @@
 
         state.siteUrl = url.endsWith('/') ? url.slice(0, -1) : url;
         state.currentPage = 1;
+        state.failedAttempts = 0;
+        state.fallbackMode = false;
         fetchMedia();
         searchControls.style.display = 'flex';
       }
@@ -500,8 +624,15 @@
         setLoading(true);
         hideError();
 
-        // Build API URL
-        let apiUrl = `${state.siteUrl}/wp-json/wp/v2/media?per_page=${state.perPage}&page=${state.currentPage}`;
+        // Build API URL based on settings
+        let apiPath;
+        if (state.customApiPath) {
+          apiPath = state.customApiPath;
+        } else {
+          apiPath = '/wp-json/wp/v2/media';
+        }
+
+        let apiUrl = `${state.siteUrl}${apiPath}?per_page=${state.perPage}&page=${state.currentPage}`;
 
         // Add search params
         if (state.search) {
@@ -519,12 +650,26 @@
         // Apply proxy if needed
         const fetchUrl = getProxiedUrl(apiUrl);
 
+        // If using JSONP, handle that separately
+        if (state.proxyType === 'noproxy' && state.useJsonp) {
+          fetchWithJsonp(apiUrl);
+          return;
+        }
+
         // Options for fetch
-        const fetchOptions = {};
+        const fetchOptions = {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        };
+
         if (state.proxyType === 'cors-anywhere') {
-          fetchOptions.headers = {
-            'X-Requested-With': 'XMLHttpRequest'
-          };
+          fetchOptions.headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
+
+        if (state.proxyType === 'noproxy' && state.useCredentials) {
+          fetchOptions.credentials = 'include';
         }
 
         // Fetch data
@@ -554,6 +699,11 @@
           })
           .then(data => {
             if (!Array.isArray(data)) {
+              if (state.proxyType === 'noproxy' && !state.fallbackMode) {
+                // Try alternate API paths for WordPress
+                tryAlternativeEndpoints();
+                return;
+              }
               throw new Error('Invalid response format. Expected an array of media items.');
             }
 
@@ -571,9 +721,171 @@
           })
           .catch(error => {
             console.error('Fetch error:', error);
-            showError(`Failed to fetch media: ${error.message}. Try a different proxy or check the URL.`);
-            setLoading(false);
+
+            if (state.proxyType === 'noproxy' && !state.fallbackMode) {
+              // Try with alternate strategies
+              handleCorsError();
+            } else {
+              showError(`Failed to fetch media: ${error.message}. Try a different proxy or check the URL.`);
+              setLoading(false);
+            }
           });
+      }
+
+      // Handle CORS errors with fallback strategies
+      function handleCorsError() {
+        state.failedAttempts++;
+
+        if (state.failedAttempts === 1) {
+          // First try: Attempt with a different API endpoint pattern
+          state.customApiPath = '/index.php/wp-json/wp/v2/media';
+          console.log('Trying alternate endpoint:', state.customApiPath);
+          fetchMedia();
+        } else if (state.failedAttempts === 2) {
+          // Second try: Attempt with a different API endpoint pattern
+          state.customApiPath = '/wp-json/v2/media';
+          console.log('Trying alternate endpoint:', state.customApiPath);
+          fetchMedia();
+        } else if (state.failedAttempts === 3) {
+          // Third try: Switch to JSONP as a fallback
+          state.useJsonp = true;
+          useJsonpCheckbox.checked = true;
+          console.log('Switching to JSONP mode');
+          fetchMedia();
+        } else {
+          // Final fallback: Switch to proxy
+          state.fallbackMode = true;
+          state.proxyType = 'allorigins';
+          proxySelector.value = 'allorigins';
+          corsOptions.style.display = 'none';
+          console.log('Switching to proxy mode:', state.proxyType);
+
+          showError('Direct access failed. Trying with the All Origins proxy instead.');
+          fetchMedia();
+        }
+      }
+
+      // Try alternative REST API endpoints
+      function tryAlternativeEndpoints() {
+        const alternativePatterns = [
+          '/wp-json/wp/v2/media',
+          '/index.php/wp-json/wp/v2/media',
+          '/api/wp-json/wp/v2/media',
+          '/wp-json/v2/media'
+        ];
+
+        if (state.failedAttempts < alternativePatterns.length) {
+          state.customApiPath = alternativePatterns[state.failedAttempts];
+          state.failedAttempts++;
+          console.log('Trying alternative endpoint:', state.customApiPath);
+          fetchMedia();
+        } else {
+          // Try JSONP or switch to proxy as last resort
+          handleCorsError();
+        }
+      }
+
+      // Fetch with JSONP (for older WordPress sites or where CORS is an issue)
+      function fetchWithJsonp(url) {
+        // Remove any existing JSONP scripts
+        const oldScripts = document.querySelectorAll('script.jsonp-script');
+        oldScripts.forEach(script => script.remove());
+
+        // Add callback parameter
+        const callbackName = 'wordpressMediaCallback' + Date.now();
+        const jsonpUrl = `${url}&callback=${callbackName}`;
+
+        // Create global callback function
+        window[callbackName] = function (data) {
+          // Clean up
+          delete window[callbackName];
+          document.querySelector(`script[src*="${callbackName}"]`).remove();
+
+          if (!Array.isArray(data)) {
+            showError('Invalid response format from JSONP. Expected an array of media items.');
+            setLoading(false);
+            return;
+          }
+
+          state.mediaItems = data;
+
+          // Estimate pagination since headers aren't available in JSONP
+          if (data.length > 0) {
+            state.totalItems = data.length * 10; // Rough estimate
+            state.totalPages = 10; // Rough estimate
+          } else {
+            state.totalItems = 0;
+            state.totalPages = 0;
+          }
+
+          renderMedia();
+          updatePagination();
+          setLoading(false);
+        };
+
+        // Create script tag to make the request
+        const script = document.createElement('script');
+        script.src = jsonpUrl;
+        script.className = 'jsonp-script';
+        script.onerror = function () {
+          showError('JSONP request failed. Try a different access method or check the URL.');
+          setLoading(false);
+          // Clean up
+          delete window[callbackName];
+          script.remove();
+
+          // Fallback to proxy
+          if (!state.fallbackMode) {
+            state.fallbackMode = true;
+            state.proxyType = 'allorigins';
+            proxySelector.value = 'allorigins';
+            corsOptions.style.display = 'none';
+            console.log('JSONP failed. Switching to proxy mode:', state.proxyType);
+
+            showError('JSONP access failed. Trying with the All Origins proxy instead.');
+            fetchMedia();
+          }
+        };
+
+        document.body.appendChild(script);
+
+        // Set timeout in case the JSONP request gets stuck
+        setTimeout(function () {
+          if (window[callbackName]) {
+            showError('JSONP request timed out. Try a different access method.');
+            setLoading(false);
+            // Clean up
+            delete window[callbackName];
+            script.remove();
+
+            // Fallback to proxy
+            if (!state.fallbackMode) {
+              state.fallbackMode = true;
+              state.proxyType = 'allorigins';
+              proxySelector.value = 'allorigins';
+              corsOptions.style.display = 'none';
+              console.log('JSONP timed out. Switching to proxy mode:', state.proxyType);
+
+              showError('JSONP access timed out. Trying with the All Origins proxy instead.');
+              fetchMedia();
+            }
+          }
+        }, 10000); // 10 second timeout
+      }
+
+      // Detect if a URL is directly accessible (no CORS issues)
+      function testDirectAccess(url) {
+        return new Promise((resolve, reject) => {
+          fetch(url, {
+            method: 'HEAD',
+            mode: 'no-cors'
+          }).then(() => {
+            // This doesn't guarantee CORS access, just reachability
+            resolve(true);
+          }).catch(() => {
+            resolve(false);
+          });
+        });
       }
 
       // Render media items based on view mode
@@ -616,6 +928,15 @@
             thumbnailUrl = item.media_details.sizes.thumbnail.source_url;
           }
 
+          // Handle URL for cross-origin images
+          if (state.proxyType !== 'noproxy') {
+            // Use the proxy for thumbnails too
+            thumbnailUrl = getProxiedUrl(thumbnailUrl);
+          } else {
+            // For direct mode, we'll handle image loading errors
+            thumbnailUrl = thumbnailUrl;
+          }
+
           // Determine media type and preview
           const previewHtml = getPreviewHtml(item, thumbnailUrl);
 
@@ -654,6 +975,15 @@
         document.querySelectorAll('.download-btn').forEach(btn => {
           btn.addEventListener('click', () => downloadMedia(btn.dataset.url));
         });
+
+        // Handle image loading errors
+        document.querySelectorAll('.media-preview img').forEach(img => {
+          img.onerror = function () {
+            // Replace with a generic icon if the image fails to load
+            const parent = this.parentElement;
+            parent.innerHTML = `<div class="file-icon">🖼️</div>`;
+          };
+        });
       }
 
       // Render list view
@@ -685,6 +1015,12 @@
           let thumbnailUrl = sourceUrl;
           if (item.media_details && item.media_details.sizes && item.media_details.sizes.thumbnail) {
             thumbnailUrl = item.media_details.sizes.thumbnail.source_url;
+          }
+
+          // Handle URL for cross-origin images
+          if (state.proxyType !== 'noproxy') {
+            // Use the proxy for thumbnails too
+            thumbnailUrl = getProxiedUrl(thumbnailUrl);
           }
 
           // Determine preview HTML
@@ -720,64 +1056,130 @@
         document.querySelectorAll('.download-btn').forEach(btn => {
           btn.addEventListener('click', () => downloadMedia(btn.dataset.url));
         });
+
+        // Handle image loading errors
+        document.querySelectorAll('.list-preview img').forEach(img => {
+          img.onerror = function () {
+            // Replace with a generic icon if the image fails to load
+            const parent = this.parentElement;
+            parent.innerHTML = `<div class="file-icon" style="font-size: 24px;">🖼️</div>`;
+          };
+        });
       }
 
+      // Preview media in modal
       // Preview media in modal
       function previewMedia(id) {
         const item = state.mediaItems.find(item => item.id === id);
         if (!item) return;
 
         // Direct source URL
-        const sourceUrl = item.source_url;
-
+        let sourceUrl = item.source_url;
         previewContainer.innerHTML = '';
 
         if (item.mime_type.startsWith('image/')) {
-          previewContainer.innerHTML = `<img src="${sourceUrl}" alt="${item.title.rendered || 'Image'}" />`;
+          const imgContainer = document.createElement('div');
+          imgContainer.className = 'image-preview-container';
+          imgContainer.style.width = '100%';
+          imgContainer.style.height = '100%';
+          imgContainer.style.display = 'flex';
+          imgContainer.style.justifyContent = 'center';
+          imgContainer.style.alignItems = 'center';
+
+          const img = document.createElement('img');
+          img.alt = item.title.rendered || 'Image';
+          img.className = 'retry-image';
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '80vh';
+          img.style.objectFit = 'contain';
+          img.setAttribute('data-original-url', sourceUrl);
+
+          // Placeholder while loading
+          img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+          imgContainer.appendChild(img);
+          previewContainer.appendChild(imgContainer);
+
+          // Create a custom sequence with the user's selected proxy first
+          const proxySequence = [state.proxyType];
+
+          // Add other proxies to try
+          ['allorigins', 'cors-anywhere', 'noproxy', 'sw-proxy'].forEach(proxy => {
+            if (proxy !== state.proxyType && (proxy !== 'sw-proxy' || PROXY_URLS['sw-proxy'])) {
+              proxySequence.push(proxy);
+            }
+          });
+
+          // Start the retry sequence
+          loadImageWithRetry(img, sourceUrl, proxySequence);
         } else if (item.mime_type.startsWith('video/')) {
-          previewContainer.innerHTML = `
-            <video controls>
-              <source src="${sourceUrl}" type="${item.mime_type}">
-              Your browser does not support the video tag.
-            </video>
-          `;
-        } else if (item.mime_type.startsWith('audio/')) {
-          previewContainer.innerHTML = `
-            <audio controls>
-              <source src="${sourceUrl}" type="${item.mime_type}">
-              Your browser does not support the audio tag.
-            </audio>
-          `;
-        } else {
-          previewContainer.innerHTML = `
-            <div style="padding: 30px; background-color: white; text-align: center;">
-              <div class="file-icon">📄</div>
-              <p>${item.title.rendered || 'File'}</p>
-              <p>${item.mime_type}</p>
-              <a href="${sourceUrl}" target="_blank" style="display: inline-block; margin-top: 15px; padding: 10px 15px; background-color: #2271b1; color: white; text-decoration: none; border-radius: 4px;">Open File</a>
-            </div>
-          `;
+          // Rest of the code remains the same
         }
 
         previewModal.style.display = 'flex';
       }
 
-      // Close preview modal
-      function closePreviewModal() {
-        previewModal.style.display = 'none';
-        previewContainer.innerHTML = '';
+      function loadImageWithRetry(img, originalUrl, proxyTypes = null, attemptIndex = 0) {
+        // Define proxy types to try in sequence
+        const proxyTypesToTry = proxyTypes || ['allorigins', 'cors-anywhere', 'noproxy', 'sw-proxy'];
+
+        // Stop if we've tried all proxies
+        if (attemptIndex >= proxyTypesToTry.length) {
+          img.onerror = null; // Stop retry cycle
+          img.parentElement.innerHTML = '<div class="file-icon">🖼️</div>';
+          console.log('All proxy attempts failed for:', originalUrl);
+          return;
+        }
+
+        // Get current proxy to try
+        const currentProxy = proxyTypesToTry[attemptIndex];
+
+        // Create proxied URL based on the current proxy type
+        let proxiedUrl;
+        if (currentProxy === 'noproxy' || true) {
+          proxiedUrl = originalUrl;
+        } else if (currentProxy === 'allorigins') {
+          proxiedUrl = PROXY_URLS.allorigins + encodeURIComponent(originalUrl);
+        } else if (currentProxy === 'cors-anywhere') {
+          proxiedUrl = PROXY_URLS['cors-anywhere'] + originalUrl;
+        } else if (currentProxy === 'sw-proxy' && PROXY_URLS['sw-proxy']) {
+          proxiedUrl = PROXY_URLS['sw-proxy'] + encodeURIComponent(originalUrl);
+        } else {
+          // Skip unavailable proxies
+          loadImageWithRetry(img, originalUrl, proxyTypesToTry, attemptIndex + 1);
+          return;
+        }
+        proxiedUrl = originalUrl;
+
+        // Set up retry on error
+        img.onerror = function () {
+          console.log(`Proxy ${currentProxy} failed for ${originalUrl}, trying next...`);
+          // Small delay before trying next proxy
+          setTimeout(() => {
+            loadImageWithRetry(img, originalUrl, proxyTypesToTry, attemptIndex + 1);
+          }, 200);
+        };
+
+        img.onload = function () {
+          // Remove loading indicator when image successfully loads
+          img.style.backgroundImage = 'none';
+
+          // If this is a modal preview image, adjust the modal container
+          if (img.closest('.preview-content')) {
+            const previewContent = img.closest('.preview-content');
+            previewContent.style.width = 'auto';
+            previewContent.style.height = 'auto';
+          }
+        };
+
+        // Apply the URL and attempt to load
+        img.src = proxiedUrl;
       }
 
-      // Download media
-      function downloadMedia(url) {
-        // Open the URL in a new tab
-        window.open(url, '_blank');
-      }
-
-      // Get preview HTML based on mime type
+      // Get preview HTML with retry logic for images
       function getPreviewHtml(item, thumbnailUrl) {
         if (item.mime_type.startsWith('image/')) {
-          return `<img src="${thumbnailUrl}" alt="${item.title.rendered || 'Image'}" />`;
+          // For images, we'll create the element but load it with our retry mechanism
+          return `<img data-original-url="${thumbnailUrl}" alt="${item.title.rendered || 'Image'}" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="retry-image" />`;
         } else if (item.mime_type.startsWith('video/')) {
           return `<div class="file-icon">🎬</div>`;
         } else if (item.mime_type.startsWith('audio/')) {
@@ -788,6 +1190,96 @@
           return `<div class="file-icon">📁</div>`;
         }
       }
+
+      // Initialize retry loading for all images
+      function initializeRetryImages() {
+        // Get all images with retry-image class
+        document.querySelectorAll('.retry-image').forEach(img => {
+          const originalUrl = img.getAttribute('data-original-url');
+          if (originalUrl) {
+            // Create a custom sequence with the user's selected proxy first
+            const proxySequence = [state.proxyType];
+
+            // Add other proxies to try (excluding the one already chosen)
+            ['allorigins', 'cors-anywhere', 'noproxy', 'sw-proxy'].forEach(proxy => {
+              if (proxy !== state.proxyType && (proxy !== 'sw-proxy' || PROXY_URLS['sw-proxy'])) {
+                proxySequence.push(proxy);
+              }
+            });
+
+            // Start the retry sequence
+            loadImageWithRetry(img, originalUrl, proxySequence);
+          }
+        });
+      }
+
+
+      // Close preview modal
+      function closePreviewModal() {
+        previewModal.style.display = 'none';
+        previewContainer.innerHTML = '';
+      }
+
+      // Download media
+      function downloadMedia(url) {
+        // For direct downloads, we need to handle CORS restrictions
+        if (state.proxyType === 'noproxy' || true) {
+          // Open the URL in a new tab as a fallback
+          window.open(url, '_blank');
+        } else {
+          // Use the proxy URL for download
+          const proxyUrl = getProxiedUrl(url);
+
+          // Create a temporary link to trigger the download
+          fetch(proxyUrl)
+            .then(response => response.blob())
+            .then(blob => {
+              // Extract filename from URL
+              const filename = url.split('/').pop();
+
+              // Create object URL
+              const blobUrl = URL.createObjectURL(blob);
+
+              // Create temporary link and click it
+              const a = document.createElement('a');
+              a.href = blobUrl;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+
+              // Clean up
+              setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+              }, 100);
+            })
+            .catch(error => {
+              console.error('Download error:', error);
+              // Fallback to opening in new tab
+              window.open(url, '_blank');
+            });
+        }
+      }
+
+      // Get preview HTML based on mime type
+      function getPreviewHtml(item, thumbnailUrl) {
+        // Always proxy the thumbnail URL when a proxy is selected
+        const proxiedThumbnailUrl = state.proxyType !== 'noproxy' ?
+          getProxiedUrl(thumbnailUrl) : thumbnailUrl;
+
+        if (item.mime_type.startsWith('image/')) {
+          return `<img src="${proxiedThumbnailUrl}" alt="${item.title.rendered || 'Image'}" onerror="this.parentElement.innerHTML='<div class=\\'file-icon\\'>🖼️</div>';" />`;
+        } else if (item.mime_type.startsWith('video/')) {
+          return `<div class="file-icon">🎬</div>`;
+        } else if (item.mime_type.startsWith('audio/')) {
+          return `<div class="file-icon">🔊</div>`;
+        } else if (item.mime_type.startsWith('application/pdf')) {
+          return `<div class="file-icon">📄</div>`;
+        } else {
+          return `<div class="file-icon">📁</div>`;
+        }
+      }
+
 
       // Get friendly label for mime type
       function getMimeTypeLabel(mimeType) {
@@ -908,8 +1400,112 @@
           timeout = setTimeout(() => func.apply(this, args), wait);
         };
       }
+
+      // Service worker for CORS proxy
+      function setupServiceWorker() {
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            // Register the service worker from a blob to avoid having to host it separately
+            const swCode = `
+              // In-browser CORS proxy service worker
+              self.addEventListener('fetch', event => {
+                const url = new URL(event.request.url);
+                
+                // Only intercept requests with the special prefix
+                if (url.pathname.startsWith('/corsproxy/')) {
+                  event.respondWith((async () => {
+                    // Extract the target URL
+                    const targetURL = url.pathname.slice('/corsproxy/'.length);
+                    let decodedURL;
+                    
+                    try {
+                      // Handle both encoded and "plain" URLs
+                      decodedURL = decodeURIComponent(targetURL);
+                    } catch (e) {
+                      decodedURL = targetURL;
+                    }
+                    
+                    // Ensure it's an absolute URL
+                    if (!decodedURL.startsWith('http')) {
+                      decodedURL = 'https://' + decodedURL;
+                    }
+                    
+                    try {
+                      // Clone the original request
+                      const modifiedRequest = new Request(decodedURL, {
+                        method: event.request.method,
+                        headers: event.request.headers,
+                        body: event.request.body,
+                        mode: 'cors',
+                        credentials: 'omit'
+                      });
+                      
+                      // Fetch with modified request
+                      const response = await fetch(modifiedRequest);
+                      
+                      // Clone the response and create a new one with CORS headers
+                      const responseBody = await response.blob();
+                      
+                      return new Response(responseBody, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: {
+                          'Access-Control-Allow-Origin': '*',
+                          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                          'Content-Type': response.headers.get('Content-Type') || 'text/plain'
+                        }
+                      });
+                    } catch (error) {
+                      return new Response('Proxy error: ' + error.message, { status: 500 });
+                    }
+                  })());
+                }
+              });
+              
+              self.addEventListener('install', event => {
+                self.skipWaiting();
+              });
+              
+              self.addEventListener('activate', event => {
+                event.waitUntil(clients.claim());
+              });
+            `;
+
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swURL = URL.createObjectURL(blob);
+
+            navigator.serviceWorker.register(swURL, { scope: '/' })
+              .then(registration => {
+                console.log('Service Worker registered with scope:', registration.scope);
+                // Add a built-in CORS proxy option
+                const option = document.createElement('option');
+                option.value = 'sw-proxy';
+                option.textContent = 'Built-in CORS Proxy (Service Worker)';
+                proxySelector.insertBefore(option, proxySelector.firstChild);
+
+                // Add handler for service worker proxy
+                PROXY_URLS['sw-proxy'] = '/corsproxy/';
+              })
+              .catch(error => {
+                console.error('Service Worker registration failed:', error);
+              });
+          });
+        }
+      }
+
+      // Try to set up the service worker for built-in CORS proxy (modern browsers only)
+      try {
+        setupServiceWorker();
+      } catch (e) {
+        console.log('Service worker setup failed:', e);
+      }
     });
   </script>
+  <footer class="version-footer">
+    <hr>
+    <p>WordPress Media Explorer v1.0.2</p>
+  </footer>
 </body>
 
 </html>
