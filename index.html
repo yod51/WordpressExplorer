@@ -366,6 +366,21 @@
     .version-footer p {
       margin: 0;
     }
+
+    #predefined-sites {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+
+    @media (min-width: 768px) {
+      #predefined-sites {
+        width: 400px;
+      }
+    }
   </style>
 </head>
 
@@ -377,6 +392,15 @@
 
       <div class="controls">
         <div class="input-group">
+          <select id="predefined-sites">
+            <option value="manual">Select Website</option>
+            <option value="https://moviz.co.il">Moviz</option>
+            <option value="https://lev.co.il">Lev</option>
+          </select>
+        </div>
+
+        <!-- Modify your existing site-url input group to have an ID so we can hide/show it -->
+        <div class="input-group" id="manual-url-input">
           <input type="text" id="site-url" placeholder="WordPress Site URL" />
           <select id="proxy-selector">
             <option value="noproxy">No Proxy (Direct)</option>
@@ -536,6 +560,35 @@
       const useJsonpCheckbox = document.getElementById('use-jsonp');
       const useCredentialsCheckbox = document.getElementById('use-credentials');
       const customApiPathInput = document.getElementById('custom-api-path');
+      const predefinedSites = document.getElementById('predefined-sites');
+      const manualUrlInput = document.getElementById('manual-url-input');
+
+      // Add event listener for predefined sites dropdown
+      predefinedSites.addEventListener('change', function () {
+        const selectedValue = this.value;
+
+        if (selectedValue === 'manual') {
+          // Show manual input option
+          manualUrlInput.style.display = 'flex';
+          siteUrlInput.value = '';
+          siteUrlInput.focus();
+        } else if (selectedValue) {
+          // A predefined site was selected
+          manualUrlInput.style.display = 'none';
+          siteUrlInput.value = selectedValue;
+
+          // Auto-connect to the selected site
+          state.siteUrl = selectedValue.endsWith('/') ? selectedValue.slice(0, -1) : selectedValue;
+          state.currentPage = 1;
+          state.failedAttempts = 0;
+          state.fallbackMode = false;
+          fetchMedia();
+          searchControls.style.display = 'flex';
+        } else {
+          // Default option - show manual input
+          manualUrlInput.style.display = 'flex';
+        }
+      });
 
       // Event Listeners
       connectBtn.addEventListener('click', connectToSite);
@@ -554,6 +607,17 @@
       useJsonpCheckbox.addEventListener('change', () => { state.useJsonp = useJsonpCheckbox.checked; });
       useCredentialsCheckbox.addEventListener('change', () => { state.useCredentials = useCredentialsCheckbox.checked; });
       customApiPathInput.addEventListener('input', () => { state.customApiPath = customApiPathInput.value.trim(); });
+      // Add this event listener to handle Enter key presses in the URL input field
+      siteUrlInput.addEventListener('keydown', function (event) {
+        // Check if Enter key was pressed
+        if (event.key === 'Enter') {
+          // Prevent default form submission behavior
+          event.preventDefault();
+
+          // Trigger the same action as clicking the connect button
+          connectBtn.click();
+        }
+      });
 
       function toggleAdvancedSettings() {
         if (advancedSettings.style.display === 'none') {
@@ -1504,7 +1568,7 @@
   </script>
   <footer class="version-footer">
     <hr>
-    <p>WordPress Media Explorer v1.0.2</p>
+    <p>WordPress Media Explorer v1.0.3</p>
   </footer>
 </body>
 
