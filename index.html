@@ -1493,6 +1493,7 @@
         if (state.currentPage > 1) {
           state.currentPage--;
           fetchMedia();
+          window.scrollTo(0, 0);
         }
       }
 
@@ -1501,6 +1502,7 @@
         if (state.currentPage < state.totalPages) {
           state.currentPage++;
           fetchMedia();
+          window.scrollTo(0, 0);
         }
       }
 
@@ -1639,7 +1641,7 @@
   </script>
   <footer class="version-footer">
     <hr>
-    <p>WordPress Media Explorer v1.0.6</p>
+    <p>WordPress Media Explorer v1.0.7</p>
   </footer>
 </body>
 
